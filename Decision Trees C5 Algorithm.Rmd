@@ -1,0 +1,200 @@
+---
+title: "Classification using Decision Trees and Rules"
+author: "Rahul Singh"
+date: "1/17/2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Identifying risky bank loans using C5.0 decision tree algorithm
+
+
+Note: C5.0 Decision Tree Algorithm was developed by J Ross Quinlan.
+
+Decision tree is a classifier which utilizes a tree structure to model relationships among features and potential outcomes.
+
+Decision trees have three main parts: a root node, leaf nodes and branches. The root node is the starting point of the tree, and both root and leaf nodes contain questions or criteria to be answered. Branches are arrows connecting nodes, showing the flow from question to answer. Each node typically has two or more nodes extending from it. For example, if the question in the first node requires a "yes" or "no" answer, there will be one leaf node for a "yes" response, and another node for "no." And at the end we have terminal nodes.
+
+After the model is created, many decision tree algorithms output the resulting structure in a human-readable format. This provides tremendous insight into how and why the model works or doesn't work well for a particular task. This also makes decision trees particularly appropriate for applications in which the classification mechanism needs to be transparent for legal reasons, or in case the results need to be shared with others in order to inform future business practices. 
+
+Example of potential uses: credit scoring models, marketing studies of customer behaviour (churn or satisfaction level), diagnosis of medical conditions. 
+
+Decision trees can be used for models of any type (in general). However there are scenarios where decision trees don't work well. For example a task with many nominal features with many levels or a task with too many numeric features. These cases may result in very complex decision trees.
+
+An algorithm known as recursive partitioning is the key to the nonparametric statistical method of classification and regression trees (CART) (Breiman, Friedman, Olshen, and Stone, 1984). Recursive partitioning is the step-by-step process by which a decision tree is constructed by either splitting or not splitting each node on the tree into two daughter nodes. An attractive feature of the CART methodology is that because the algorithm asks a sequence of hierarchical Boolean questions (e.g., is a given point less than a threshold value), it is relatively simple to understand and interpret the results.
+
+The algorithm stops once the data is sufficiently homogenous or a stop criteria has been met. So your data splits at every decision node. It is more like the algorithm trying to divide and conquer.
+
+When will the tree stop growing? when all nodes have same class OR no remaining features to distinguish in the split dataset (say 80% of examples in each group are from a single class) OR tree has grown to predifined size limit.
+
+*Caution*- Do not try to overfit the data. 
+
+The C5.0 Algorithm
+
+*Pros:* all purpose classifier, highly automatic learning process that can handle numeric or nominal features along with missing data, excludes unimportant features
+
+*Cons:* decision tree models biased toward splits on features having a large number of levels, it is easy to overfit or underfit, can have trouble modeling some relationships due to reliance on axis-parallel splits, small changes in training data results in large changes to decision logic, large trees are difficult to interpret and decisions they make may seem counterintuitive
+
+Q. How to choose the best split?
+First obstacle is to identify which feature to split upon. 
+Purity is the degree to which a subset of examples contains only a single class. Any subset composed only of a single class is called pure.
+
+*Concept of Entropy:* Entropy checks the purity in the dataset. It quantifies randomness in a set. The decision trees tend to find splits that reduce entropy. Entropy is measured in bits. There are two possible classes of entropy. One class ranges from 0 to 1 and in another class, entropy for n classes range from 0 to log(base2)n. Minimum value indicates the sample is completely homogenous and maximum indicates complete diversity.
+
+*Information gain:* To use entropy to determine optimal feature to split upon, the algorithm calculates the change in homogeneity that would result from a split on each possible feature. Information gain for a feature is the difference between entropy in the segment before the split and the partitions resulting from the split.
+
+The higher the information gain, the better a feature is at creating homogeneous groups after a split on this feature. If the information gain is zero, there is no reduction in entropy for splitting on this feature. On the other hand, the maximum information gain is equal to the entropy prior to the split. This would imply that the entropy after the split is zero, which means that the split results in completely homogeneous groups.
+
+The previous formulae assume nominal features, but decision trees use information gain for splitting on numeric features as well. To do so, a common practice is to test various splits that divide the values into groups greater than or less than a numeric threshold. This reduces the numeric feature into a two-level categorical feature that allows information gain to be calculated as usual. The numeric cut point yielding the largest information gain is chosen for the split.
+
+Though it is used by C5.0, information gain is not the only splitting criterion that can be used to build decision trees. Other commonly used criteria are Gini index, Chi-Squared statistic, and gain ratio.
+
+Pruning the decision tree: if the tree grows overly large, many of the decisions it makes will be overly specific and the model will be over tted to the training data. The process of pruning a decision tree involves reducing its size such that it generalizes better to unseen data.
+
+One solution to this problem is to stop the tree from growing once it reaches a certain number of decisions or when the decision nodes contain only a small number of examples. This is called early stopping or pre-pruning the decision tree. As the tree avoids doing needless work, this is an appealing strategy. However, one downside to this approach is that there is no way to know whether the tree will miss subtle, but important patterns that it would have learned had it grown to a larger size.
+
+An alternative, called post-pruning, involves growing a tree that is intentionally too large and pruning leaf nodes to reduce the size of the tree to a more appropriate level. This is often a more effective approach than pre-pruning, because it is quite dif cult to determine the optimal depth of a decision tree without growing it  rst. Pruning the tree later on allows the algorithm to be certain that all the important data structures were discovered.
+
+One of the bene ts of the C5.0 algorithm is that it is opinionated about pruning it takes care of many decisions automatically using fairly reasonable defaults. Its overall strategy is to post-prune the tree. It first grows a large tree that over ts the training data. Later, the nodes and branches that have little effect on the classi cation errors are removed. In some cases, entire branches are moved further up the tree or replaced by simpler decisions. These processes of grafting branches are known as subtree raising and subtree replacement, respectively.
+
+```{r}
+credit_data<-read.csv("~/Desktop/Decision Trees C5 Algorithm/credit.csv")
+#Source: the UCI Machine Learning Data Repository
+# http://archive.ics.uci.edu/ml by Hans Hofmann of the University of Hamburg
+str(credit_data)
+#notice DM in checking_balance column is in Deutsche Marks
+#notice that columns 18 to 21 are not needed for analysis 
+#because they provide additional user information
+library(dplyr)
+credit_data<-credit_data %>% select(-18,-19,-20,-21)
+#we are converting default column to factor as the label column in C5.0 algorithm has to be a factor
+credit_data$default<-as.factor(credit_data$default)
+```
+
+```{r}
+#Exploring data
+table(credit_data$checking_balance)
+table(credit_data$savings_balance)
+summary(credit_data$months_loan_duration)
+summary(credit_data$amount)
+table(credit_data$default)
+```
+
+```{r}
+#Data Preparation: creating training and test datasets
+#we will first randomize the dataset
+#sample() function is used to perform random sampling
+#seed value causes the randomization process to follow a sequence that can be replicated later on if desired
+set.seed(123)
+train_data <- sample(1000, 900)
+#the resulting train_sample object is a vector of 900 random integers
+str(train_data)
+```
+
+```{r}
+training<- credit_data[train_data,]
+testing<- credit_data[-train_data,]
+```
+
+```{r}
+#to check consistency in training and testing credit data
+prop.table(table(training$default))
+prop.table(table(testing$default))
+#data seems to be fairly evenly split
+```
+
+Training the data on model
+```{r}
+#load library to run C5.0 algorithm
+library(C50)
+```
+
+```{r}
+credit_model <- C5.0(training[-17], training$default)
+#The input C5.0(training data, class for each row in training data, 
+#trials to control boosting iterations: set to 1 by default,costs is 
+#associated with certain errors)
+print(credit_model) 
+#we observe a tree size of 83; meaning it is 83 decisions deep!
+summary(credit_model) #to see tree decisions
+#The numbers in parentheses indicate the number of examples meeting the criteria for that
+#decision, and the number incorrectly classi ed by the decision. 
+#After the tree, the summary(credit_model) output displays a confusion matrix, 
+#which is a cross-tabulation that indicates the model's incorrectly classified records in the training data
+
+```
+Sometimes a tree results in decisions that make little logical sense. For example, why would an
+applicant whose credit history is very good be likely to default, while those whose checking
+balance is unknown are not likely to default? Contradictory rules like this occur sometimes. They
+might re ect a real pattern in the data, or they may be a statistical anomaly. In either case, it
+is important to investigate such strange decisions to see whether the tree's logic makes sense
+for business use.
+
+Test dataset performance
+```{r}
+credit_predict <- predict(credit_model, testing)
+#predict function takes the training model, testing subdata, prob/class display
+```
+
+```{r}
+library(gmodels)
+CrossTable(testing$default, credit_predict, prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE, dnn = c('actual default', 'predicted default'))
+#we observe a high error rate of 25%; this actually translates to loss in business
+```
+
+*Boosting*
+One way the C5.0 algorithm improved upon the C4.5 algorithm was through the addition of adaptive boosting. This is a process in which many decision trees are built and the trees vote on the best class for each example. Boosting can be applied to any machine learning algorithm.
+
+The C5.0() function makes it easy to add boosting to our C5.0 decision tree. We simply need to add an additional trials parameter indicating the number of separate decision trees to use in the boosted team. The trials parameter sets an upper limit; the algorithm will stop adding trees if it recognizes that additional trials do not seem to be improving the accuracy. We'll start with 10 trials, a number that has become the de facto standard, as research suggests that this reduces error rates on test data by about 25 percent
+
+Improving the model with boosting:
+```{r}
+credit_boost10 <- C5.0(training[-17], training$default, trials = 30)
+print(credit_boost10)
+#we can already observe that the tree length has come down to 62 decisions
+summary(credit_boost10) #classifier made only 7 mistakes
+
+```
+
+Testing boost on testing data
+```{r}
+credit_boost_pred10 <- predict(credit_boost10, testing)
+CrossTable(testing$default, credit_boost_pred10, prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE, dnn = c('actual default', 'predicted default'))
+#with 30 trials we can observe that our model has improved to 23%
+```
+
+We can observe that even though the model improves, it still does make losses to banks. 23% is quite high.
+
+Giving a loan out to an applicant who is likely to default can be an expensive mistake. One solution to reduce the number of false negatives may be to reject a larger number of borderline applicants, under the assumption that the interest the bank would earn from a risky loan is far outweighed by the massive loss it would incur if the money is not paid back at all.
+
+The C5.0 algorithm allows us to assign a penalty to different types of errors, in order to discourage a tree from making more costly mistakes. The penalties are designated in a cost matrix, which specifies how much costlier each error is, relative to any other prediction.
+To begin constructing the cost matrix, we need to start by specifying the dimensions. Since the predicted and actual values can both take two values, yes or no, we need to describe a 2 x 2 matrix, using a list of two vectors, each with two values. 
+At the same time, we'll also name the matrix dimensions to avoid confusion later on-
+```{r}
+matrix_dimensions <- list(c("1", "2"), c("1", "2"))
+names(matrix_dimensions) <- c("predicted", "actual")
+```
+
+Next, we need to assign the penalty for the various types of errors by supplying four values to  fill the matrix. Since R  lls a matrix by  filling columns one by one from top to bottom, we need to supply the values in a speci c order:
+• Predicted no, actual no
+• Predicted yes, actual no
+• Predicted no, actual yes
+• Predicted yes, actual yes
+
+```{r}
+error_cost <- matrix(c(0, 1, 4, 0), nrow = 2, dimnames = matrix_dimensions)
+```
+
+As defined by this matrix, there is no cost assigned when the algorithm classifies a no or yes correctly, but a false negative has a cost of 4 versus a false positive's cost of 1. To see how this impacts classification, let's apply it to our decision tree using the costs parameter of the C5.0() function. We'll otherwise use the same steps as we did earlier:
+```{r}
+credit_cost <- C5.0(training[-17], training$default, costs = error_cost)
+credit_cost_pred <- predict(credit_cost, testing)
+CrossTable(testing$default, credit_cost_pred, prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE, dnn = c('actual default', 'predicted default'))
+```
+
+*Conclusion:* Even though the final model makes more mistakes, we will prefer this as it is better to not give loans to people who will default more likely at the trade off cost of making mistakes while rejecting giving loan to people who would more likely not default.
